@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualization Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/vega@5.23.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@5.6.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6.20.0"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-cloud/1.2.5/d3.layout.cloud.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        #dashboard {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+        #chart, #treemap {
+            width: 1000px;
+            height: 500px;
+        }
+        .chart-container {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Visualization Dashboard</h1>
+    <div id="dashboard">
+        <div class="chart-container">
+            <h2>Frequency of Topics against Topic</h2>
+            <div id="chart"></div>
+        </div>
+        <div class="chart-container">
+            <h2>Average Length of Topic</h2>
+            <div id="treemap"></div>
+            <div id="tooltip" style="position: absolute; visibility: hidden; background-color: rgba(0, 0, 0, 0.7); color: white; padding: 5px; border-radius: 3px;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Function to fetch data from the CSV and generate new data points
+        function fetchData() {
+            return fetch('./grouped_df_tableau.csv') // Replace with your CSV URL
+                .then(response => response.text())
+                .then(data => {
+                    const rows = data.split('\n').slice(1); // Skip header
+                    const newData = rows.map(row => {
+                        const columns = row.split(',');
+                        if (columns.length < 2) {
+                            console.warn('Skipping invalid row:', row); 
+                            return null;
+                        }
+
+                        const topic = columns[0].trim();
+                        const number_of_topics = +columns[1].trim(); // Convert to number
+
+                        if (!isNaN(number_of_topics) && number_of_topics >= 0) {
+                            return {
+                                topic: topic,
+                                number_of_topics: number_of_topics
+                            };
+                        }
+                        return null; 
+                    }).filter(d => d !== null);
+
+                    return newData;
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+
+        // Function to create and embed the bar chart
+        function createChart(data) {
+            var vlSpec = {
+                $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+                data: {
+                    values: data
+                },
+                width: 950, // Updated width
+                height: 500, // Updated height
+                mark: 'bar',
+                encoding: {
+                    x: {
+                        field: 'topic',
+                        type: 'nominal',
+                        sort: '-y' // Sort topics based on descending order of number_of_topics
+                    },
+                    y: {
+                        field: 'number_of_topics',
+                        type: 'quantitative'
+                    },
+                    color: {
+                        field: 'topic',
+                        type: 'nominal',
+                        legend: null
+                    },
+                    tooltip: [ // Add tooltip to display topic and number of topics
+                        { field: 'topic', type: 'nominal', title: 'Topic' },
+                        { field: 'number_of_topics', type: 'quantitative', title: 'Number of Topics' }
+                    ]
+                }
+            };
+
+            vegaEmbed('#chart', vlSpec).catch(console.error);
+        }
+
+        // Function to load and process CSV data for treemap
+        function loadTreemapData() {
+            d3.csv('./grouped_df_tableau.csv').then(function(data) {
+                data.forEach(d => d.AverageLength = +d.AverageLength);
+                createTreemap(data);
+            }).catch(function(error) {
+                console.error('Error loading CSV data:', error);
+            });
+        }
+
+        // Function to create the Treemap
+        function createTreemap(data) {
+            // Set dimensions for the treemap
+            const width = 1000;
+            const height = 500;
+
+            // Create an SVG element for the treemap
+            const svg = d3.select("#treemap")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            // Process data for the hierarchy
+            const root = d3.hierarchy({children: data})
+                .sum(d => d.AverageLength)
+                .sort((a, b) => b.AverageLength - a.AverageLength);
+
+            // Create a treemap layout
+            d3.treemap()
+                .size([width, height])
+                .padding(2)(root);
+
+            // Define color scale for the rectangles
+            const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+            // Create a tooltip div for hover info
+            const tooltip = d3.select("#tooltip");
+
+            // Add rectangles for each data point
+            const nodes = svg.selectAll("g")
+                .data(root.leaves())
+                .enter()
+                .append("g")
+                .attr("transform", d => `translate(${d.x0},${d.y0})`);
+
+            // Append the rectangles
+            nodes.append("rect")
+                .attr("width", d => d.x1 - d.x0)
+                .attr("height", d => d.y1 - d.y0)
+                .attr("fill", d => color(d.data.Topic))
+                .on("mouseover", function(event, d) {
+                    tooltip.style("visibility", "visible")
+                        .text(`Topic: ${d.data.Topic}, Avg Length: ${d.data.AverageLength} minutes`);
+                })
+                .on("mousemove", function(event) {
+                    tooltip.style("top", (event.pageY - 20) + "px")
+                        .style("left", (event.pageX + 20) + "px");
+                })
+                .on("mouseout", function() {
+                    tooltip.style("visibility", "hidden");
+                });
+
+            // Append the topic text within each rectangle
+            nodes.append("text")
+                    .attr("x", 5)
+                    .attr("y", 20)
+                    .attr("font-size", "11px")
+                    .attr("fill", "white")
+                    .attr("pointer-events", "none") // Allow mouse events to pass through the text
+                    .each(function(d) {
+                        const text = d3.select(this);
+                        const words = d.data.Topic.split(/\s+/); // Split topic text into words
+                        const rectWidth = d.x1 - d.x0;
+                        let line = [];
+                        let lineNumber = 0;
+                        const lineHeight = 1.1; // ems
+                        const y = text.attr("y");
+                        let tspan = text.text(null).append("tspan").attr("x", 5).attr("y", y);
+
+                        // Append words one by one, wrapping when they exceed the rectangle width
+                        words.forEach(word => {
+                            line.push(word);
+                            tspan.text(line.join(" "));
+                            const tspanWidth = tspan.node().getComputedTextLength();
+                            if (tspanWidth > rectWidth - 10) { // If width exceeds the rect, wrap the text
+                                line.pop(); // Remove the last word that caused the overflow
+                                tspan.text(line.join(" ")); // Set the line without the overflowing word
+                                line = [word]; // Start new line with the overflowing word
+                                tspan = text.append("tspan") // Add new line
+                                    .attr("x", 5)
+                                    .attr("y", +y + (++lineNumber * lineHeight * 12)) // Increment line height
+                                    .text(word);
+                            }
+                        });
+                    });
+            }
+
+        // Load the treemap data and generate the treemap
+        loadTreemapData();
+
+        // Function to update the bar chart and word cloud with new data
+        function updateChart() {
+            fetchData().then(newData => {
+                createChart(newData); // Update the bar chart
+            }).catch(error => console.error('Error updating chart:', error));
+        }
+
+        // Initial fetch and set interval for updates
+        updateChart(); // Initial update
+
+    </script>
+
+            
+</body>
+</html>
