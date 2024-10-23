@@ -10,6 +10,7 @@ from langchain_openai import ChatOpenAI
 #Instantiate the API key
 os.environ['OPENAI_APIKEY'] = "your api key"
 
+#Line 14-25 is to read the csv file and store the data in a dictionary
 topic_dict = {}
 csv_file = open("grouped_df_tableau.csv", "r")
 
@@ -29,6 +30,16 @@ embeddings = OpenAIEmbeddings(openai_api_key=os.environ['OPENAI_APIKEY'])
 
 #Function to load existing vector db
 def load_existing_vectorstore(persist_directory, embeddings):
+    """
+    Function to load the existing vector store
+
+    Args:
+    - persist_directory: The directory where the vector store is saved
+    - embeddings: The embedding function to use for the vector store
+
+    Returns:
+    - vectordb: The loaded vector store
+    """
     return Chroma(
         persist_directory=persist_directory,
         embedding_function=embeddings
@@ -36,6 +47,17 @@ def load_existing_vectorstore(persist_directory, embeddings):
 
 # Function to create the QA chain
 def create_qa_chain(vectordb, embeddings):
+    """
+    Function to create the QA chain
+
+    Args:
+    - vectordb: The vector store to use for the QA chain
+    - embeddings: The embedding function to use for the QA chain
+
+    Returns:
+    - qa_chain: The QA chain object
+
+    """
     retriever = vectordb.as_retriever()
     return RetrievalQA.from_chain_type(
         llm=ChatOpenAI(openai_api_key= os.environ['OPENAI_APIKEY'], model="gpt-4o-2024-05-13"),
@@ -44,19 +66,27 @@ def create_qa_chain(vectordb, embeddings):
         return_source_documents=True
     )
 
+#Function to create the QA chain with a prompt
 def create_qa_chain_cluster(vectordb, embeddings, PROMPT):
+    """
+    Function to create the QA chain with a prompt
+
+    Args:
+    - vectordb: The vector store to use for the QA chain
+    - embeddings: The embedding function to use for the QA chain
+    - PROMPT: The prompt to use for the QA chain
+
+    Returns:
+    - qa_chain: The QA chain object
+
+    """
     retriever = vectordb.as_retriever()
     return RetrievalQA.from_chain_type(
         llm=ChatOpenAI(openai_api_key= os.environ['OPENAI_APIKEY'], model="gpt-4o-2024-05-13"),
-        # llm=OpenAI(temperature=0),
         chain_type="stuff",
         retriever=retriever,
         chain_type_kwargs={
             "prompt": PROMPT
-            # PromptTemplate(
-                # template=prompt_template,
-                # input_variables=["question", "summarise"],
-            # ),
         },
         return_source_documents=True,
     )
@@ -64,17 +94,30 @@ def create_qa_chain_cluster(vectordb, embeddings, PROMPT):
 
 # Function to process the LLM response and print sources
 def process_llm_response(llm_response):
-    # print(llm_response['result'])
-    # print('\n\nSources:')
-    # for source in llm_response["source_documents"]:
-    #     print(source.metadata['source'])
+    """
+    Function to process the LLM response and print sources
+
+    Args:
+    - llm_response: The response from the LLM model
+
+    Returns:
+    - response: The processed response
+    """
+
     response = llm_response['result']
-    # response = response + '\n\nSources:'
-    # for source in llm_response["source_documents"]:
-    #     response += source.metadata['source'] + '\n'
+
     return response
 
 def send_query_to_api(query):
+    """
+    Function to send query to api
+
+    Args:
+    - query: The query to send to the API
+
+    Returns:
+    - response: The response from the LLM
+    """
     #Load existing vector db
     vectordb = load_existing_vectorstore(persist_directory, embeddings)
     
@@ -86,7 +129,18 @@ def send_query_to_api(query):
 
 from langchain_core.prompts import PromptTemplate
 
+#Function to cluster topic
 def send_text_to_api(text, session_id):
+    """
+    Function to cluster topic 
+
+    Args:
+    - text: The text to send to the API
+    - session_id: The session ID of the text
+
+    Returns:
+    - True: If the text is successfully sent to the API
+    """
 
     prompt_template = """
     You are reading documents storing about the transcripts of different session. 
@@ -124,6 +178,7 @@ def send_text_to_api(text, session_id):
         "reducing self-harm",
         "smoking cessation",
         "supporting client to live in more alignment with her values",
+        "taking medicine / following medical procedure",
         "taking steps towards getting help with day-care",
         "unidentifiable",
         "weight loss",
@@ -209,6 +264,16 @@ OLD_DOCUMENTS_DIR = r"data"
 FILE_PATTERN = "./*.txt"
 
 def add_document_to_db(input):
+    """
+    Function to add documents to the vector database
+
+    Args:
+    - input: The input to the function
+
+    Returns:
+    - message: The message indicating the number of documents added or the error message
+    """
+
     # Check if the new_data directory is empty
     if not os.listdir(NEW_DOCUMENTS_DIR):
         return "Directory is empty. Nothing is added."
@@ -268,13 +333,6 @@ def add_document_to_db(input):
         # Add new documents with updated metadata to the existing vector store
         vectordb.add_documents(texts)
 
-        # for doc in documents:
-        #     session_txt = doc.page_content
-        #     passed = send_text_to_api(session_txt, doc.metadata['session_id'])
-
-        #     if not passed:
-        #         return "There is an error with the header of the transcription file. Please make sure the header is correct."
-
         # Convert dictionary into string
         data = ""
         for key,value in topic_dict.items():
@@ -295,6 +353,19 @@ def add_document_to_db(input):
 """Add header to transcription file"""
 #This function might not be needed, because can just write description after transcribing
 def add_Header_To_Transcription(file_path, session_id, description,user, date):
+    """
+    Function to add header to the transcription file
+
+    Args:
+    - file_path: The path to the transcription file
+    - session_id: The session ID
+    - description: The description of the session
+    - user: The user who attended the session
+    - date: The date of the session
+
+    Returns:
+    - None
+    """
     # Read the existing transcription content
     with open(file_path, 'r') as file:
         transcription = file.read()
@@ -316,6 +387,15 @@ import whisper
 import subprocess
 
 def get_video_length(video_path):
+    """
+    Function to get the length of the video or audio file
+
+    Args:
+    - video_path: The path to the video or audio file
+
+    Returns:
+    - length: The length of the video or audio file in minutes
+    """
     result = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_path],
         stdout=subprocess.PIPE,
@@ -324,10 +404,32 @@ def get_video_length(video_path):
     return float(result.stdout)
 
 def is_valid_format(file_name):
+    """
+    Function to check whether the file format is valid
+
+    Args:
+    - file_name: The name of the file
+
+    Returns:
+    - valid: True if the file format is valid, False otherwise
+    """
     valid_formats = ['.m4a', '.mp3', '.webm', '.mp4', '.mpga', '.wav', '.mpeg']
     return any(file_name.lower().endswith(ext) for ext in valid_formats)
 
 def transcribe_video(video_name, session_id, description, user, date):
+    """
+    Function to transcribe video or audio
+
+    Args:
+    - video_name: The name of the video or audio file
+    - session_id: The session ID
+    - description: The description of the session
+    - user: The user who attended the session
+    - date: The date of the session
+
+    Returns:
+    - message: The message indicating the status of the transcription or the error message
+    """
 
     if not is_valid_format(video_name):
         return "Invalid file format. Please keep the file in one of the following formats: .m4a, .mp3, .webm, .mp4, .mpga, .wav, .mpeg"
@@ -369,6 +471,15 @@ def transcribe_video(video_name, session_id, description, user, date):
 
 """Delete Chroma Vector DB"""
 def delete_vector_db():
+    """
+    Function to delete the Chroma Vector DB
+
+    Args:
+    - None
+
+    Returns:
+    - None
+    """
     # To cleanup, you can delete the collection
     vectordb = load_existing_vectorstore(persist_directory, embeddings)
     vectordb.delete_collection()
@@ -411,6 +522,15 @@ Question: {input}
 """
 
 def get_parent_dir():
+    """
+    Function to get the parent directory
+
+    Args:
+    - None
+
+    Returns:
+    - parent_path: The parent directory path
+    """
     # Define the current path
     current_path = Path(__file__)
     # Get the parent directory
@@ -421,6 +541,16 @@ def get_parent_dir():
 
 
 def collect_data_as_one_docs(directory_path, output_file):
+    """
+    Function to collect all data in a directory into one document
+
+    Args:
+    - directory_path: The path to the directory containing the documents
+    - output_file: The path to the output file
+
+    Returns:
+    - None
+    """
 
     # Clear the content of the output file before writing
     with open(output_file, "w") as outfile:
@@ -440,6 +570,16 @@ def collect_data_as_one_docs(directory_path, output_file):
 
 
 def load_raw_data(filepath):
+    """
+    Function to load raw data from a file
+
+    Args:
+    - filepath: The path to the file containing the raw data
+
+    Returns:
+    - documents: The loaded documents
+
+    """
     loader = TextLoader(file_path = filepath)
     documents = loader.load()
 
@@ -447,6 +587,15 @@ def load_raw_data(filepath):
 
 
 def processing_docs(document):
+    """
+    Function to process documents into smaller chunks
+
+    Args:
+    - document: The document to process
+
+    Returns:
+    - texts: The processed texts
+    """
     # split text into character
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=2500)
     texts = text_splitter.split_documents(document)
@@ -455,6 +604,16 @@ def processing_docs(document):
 
 
 def text_2_embedding(texts, raw_data_filename):
+    """
+    Function to convert text to embeddings
+
+    Args:
+    - texts: The texts to convert to embeddings
+    - raw_data_filename: The filename of the raw data
+
+    Returns:
+    - None
+    """
 
     parent_path = get_parent_dir()
     vecdb_persist_folder = "VectorDB"
@@ -478,6 +637,17 @@ def text_2_embedding(texts, raw_data_filename):
 def retrievd_relevant_content(user_input_query,
                               vecdb_persist_folder,
                               knowledge_base_topic):
+    """
+    Function to retrieve relevant content
+
+    Args:
+    - user_input_query: The user input query
+    - vecdb_persist_folder: The vector database persist folder
+    - knowledge_base_topic: The knowledge base topic
+
+    Returns:
+    - retrievd_relevant_content: The retrieved relevant content
+    """
 
     embedding_model = OpenAIEmbeddings(api_key=os.environ['OPENAI_APIKEY'])
 
@@ -502,6 +672,16 @@ def retrievd_relevant_content(user_input_query,
 
 def generate_answer(user_input_query,
                     relevant_content):
+    """
+    Function to generate an answer
+
+    Args:
+    - user_input_query: The user input query
+    - relevant_content: The relevant content
+
+    Returns:
+    - chatbot_response: The chatbot response
+    """
     
     prompt = ChatPromptTemplate.from_template(QA_PROMPT)
     text_generation_model = ChatOpenAI(temperature = 0.2, model = "gpt-4o-2024-05-13", 
@@ -516,6 +696,15 @@ def generate_answer(user_input_query,
 
 
 def send_code_to_api(user_input):
+    """
+    Function to send code to the API
+
+    Args:
+    - user_input: The user input
+
+    Returns:
+    - response: The response from the API
+    """
     raw_data_persist_folder = "raw_data"
     doc_to_build_kb = "output.txt"
     vector_database_folder_name = "VectorDB"
